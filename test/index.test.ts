@@ -1,5 +1,5 @@
-import { expect, it, describe, vi } from "vitest";
-import { destr, safeDestr } from "../src";
+import { describe, expect, it, vi } from "vitest";
+import { destr, safeDestr } from "../src/index";
 
 describe("destr", () => {
   it("returns the passed value if it's not a string", () => {
@@ -51,6 +51,19 @@ describe("destr", () => {
   it("parses string '-infinity' as `Number.NEGATIVE_INFINITY` case-insensitively", () => {
     expect(destr("-infinity")).toStrictEqual(Number.NEGATIVE_INFINITY);
     expect(destr("-Infinity")).toStrictEqual(Number.NEGATIVE_INFINITY);
+  });
+
+  it("parses string bigint as `BigInt()`", () => {
+    expect(destr("9007199254740991")).toStrictEqual(9_007_199_254_740_991);
+    expect(destr(BigInt("9007199254740991"))).toStrictEqual(
+      BigInt(9_007_199_254_740_991),
+    );
+    expect(destr(BigInt(9_007_199_254_740_991))).toStrictEqual(
+      BigInt(9_007_199_254_740_991),
+    );
+    expect(
+      destr(`{"value":9007199254740991n}`, { bigint: true }),
+    ).toMatchInlineSnapshot(`"{"value":9007199254740991n}"`);
   });
 
   it("parses string 'undefined' as `undefined` case-insensitively", () => {

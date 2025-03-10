@@ -6,6 +6,7 @@ const suspectConstructorRx =
   /"(?:c|\\u0063)(?:o|\\u006[Ff])(?:n|\\u006[Ee])(?:s|\\u0073)(?:t|\\u0074)(?:r|\\u0072)(?:u|\\u0075)(?:c|\\u0063)(?:t|\\u0074)(?:o|\\u006[Ff])(?:r|\\u0072)"\s*:/;
 
 const JsonSigRx = /^\s*["[{]|^\s*-?\d{1,16}(\.\d{1,17})?([Ee][+-]?\d+)?\s*$/;
+const BigIntCandidateRx = /^-?\d{17,}$/;
 
 function jsonParseTransform(key: string, value: any): any {
   if (
@@ -27,6 +28,7 @@ function warnKeyDropped(key: string): void {
 
 export type Options = {
   strict?: boolean;
+  bigint?: boolean;
 };
 
 export function destr<T = unknown>(value: any, options: Options = {}): T {
@@ -72,6 +74,18 @@ export function destr<T = unknown>(value: any, options: Options = {}): T {
     }
   }
 
+  // Check for potential BigInt (large integers that would lose precision as Number)
+  if (options.bigint && BigIntCandidateRx.test(_value)) {
+    try {
+      return BigInt(_value) as unknown as T;
+    } catch (error) {
+      if (options.strict) {
+        throw error;
+      }
+      // If it's not a valid BigInt, continue with normal parsing
+    }
+  }
+
   if (!JsonSigRx.test(value)) {
     if (options.strict) {
       throw new SyntaxError("[destr] Invalid JSON");
@@ -86,6 +100,41 @@ export function destr<T = unknown>(value: any, options: Options = {}): T {
       }
       return JSON.parse(value, jsonParseTransform);
     }
+
+    // Parse with or without BigInt support
+    if (options.bigint) {
+      return JSON.parse(value, (key, val) => {
+        // Check if a value is a string that might represent a BigInt
+        if (typeof val === "string" && BigIntCandidateRx.test(val)) {
+          try {
+            return BigInt(val);
+          } catch {
+            return val;
+          }
+        }
+
+        // Check if a value is a number that might be better represented as BigInt
+        // (for values that might lose precision as Number)
+        if (
+          typeof val === "number" &&
+          !Number.isInteger(val) &&
+          Math.abs(val) > Number.MAX_SAFE_INTEGER
+        ) {
+          try {
+            // Try to convert it to a BigInt if it appears to be an integer value
+            const strVal = val.toString();
+            if (!/[.e]/i.test(strVal)) {
+              return BigInt(strVal);
+            }
+          } catch {
+            // If conversion fails, return original value
+          }
+        }
+
+        return val;
+      }) as T;
+    }
+
     return JSON.parse(value);
   } catch (error) {
     if (options.strict) {
